@@ -341,8 +341,15 @@ async fn spawn_daemon(port: u16) -> Result<()> {
         .with_context(|| format!("open log {}", log.display()))?;
     let stderr = log_file.try_clone()?;
     let listen = format!("ws://127.0.0.1:{port}");
+    // Use a private sqlite state-db dir to avoid migration drift against any
+    // other codex tooling (desktop app, ad-hoc app-server invocations, etc.).
+    // Honor CODEX_SQLITE_HOME if the user already set one.
+    let sqlite_home = std::env::var("CODEX_SQLITE_HOME")
+        .unwrap_or_else(|_| config_dir().unwrap().join("state").to_string_lossy().into_owned());
+    fs::create_dir_all(&sqlite_home).ok();
     let child = std::process::Command::new("codex")
         .args(["app-server", "--listen", &listen, "-c", "features.goals=true"])
+        .env("CODEX_SQLITE_HOME", &sqlite_home)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(stderr))
