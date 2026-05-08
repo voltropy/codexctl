@@ -609,10 +609,19 @@ async fn cmd_interrupt(name: String) -> Result<()> {
     let entry = lookup_thread(&name)?;
     let client = connect().await?;
     resume_thread(&client, &entry).await?;
+    let active_turn = active_turn_id(&client, &entry.thread_id)
+        .await
+        .context("look up active turn for interrupt")?
+        .ok_or_else(|| {
+            anyhow!(
+                "no active turn on thread {} — turn/interrupt requires a turn in flight",
+                entry.thread_id
+            )
+        })?;
     let resp = client
         .send_raw_request(
             "turn/interrupt",
-            json!({"threadId": entry.thread_id}),
+            json!({"threadId": entry.thread_id, "turnId": active_turn}),
             None,
         )
         .await
