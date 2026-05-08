@@ -65,6 +65,9 @@ enum Cmd {
         model: String,
         #[arg(long, default_value = "workspace-write")]
         sandbox: String,
+        /// Reasoning effort: low | medium | high | xhigh.
+        #[arg(long)]
+        reasoning: Option<String>,
         /// If set, also set the goal objective on the new thread.
         #[arg(long)]
         objective: Option<String>,
@@ -146,6 +149,7 @@ async fn main() -> Result<()> {
             cwd,
             model,
             sandbox,
+            reasoning,
             objective,
             budget,
             no_objective_yet,
@@ -155,6 +159,7 @@ async fn main() -> Result<()> {
                 cwd,
                 model,
                 sandbox,
+                reasoning,
                 objective,
                 budget,
                 no_objective_yet,
@@ -429,6 +434,7 @@ async fn cmd_start(
     cwd: Option<PathBuf>,
     model: String,
     sandbox: String,
+    reasoning: Option<String>,
     objective: Option<String>,
     budget: u64,
     no_objective_yet: bool,
@@ -451,6 +457,9 @@ async fn cmd_start(
     params.cwd = cwd_str.clone();
     params.model = Some(model.clone());
     params.sandbox = Some(sandbox.clone());
+    if let Some(effort) = reasoning.as_deref() {
+        params.effort = Some(effort.to_string());
+    }
     params
         .extra
         .insert("skipGitRepoCheck".into(), Value::Bool(true));
