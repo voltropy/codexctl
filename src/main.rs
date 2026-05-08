@@ -552,11 +552,21 @@ async fn cmd_steer(name: String, message: String) -> Result<()> {
     let entry = lookup_thread(&name)?;
     let client = connect().await?;
     resume_thread(&client, &entry).await?;
+    let active_turn = active_turn_id(&client, &entry.thread_id)
+        .await
+        .context("look up active turn for steer")?
+        .ok_or_else(|| {
+            anyhow!(
+                "no active turn on thread {} — turn/steer requires a turn in flight; use `codexctl say` instead",
+                entry.thread_id
+            )
+        })?;
     let resp = client
         .send_raw_request(
             "turn/steer",
             json!({
                 "threadId": entry.thread_id,
+                "expectedTurnId": active_turn,
                 "input": [{"type": "text", "text": message}],
             }),
             None,
@@ -565,6 +575,34 @@ async fn cmd_steer(name: String, message: String) -> Result<()> {
         .context("turn/steer")?;
     println!("{}", serde_json::to_string_pretty(&resp)?);
     Ok(())
+}
+
+/// Look up the currently in-flight turn for `thread_id` via `thread/read`.
+/// Returns the turn id if status==inProgress; None if the thread is idle.
+async fn active_turn_id(client: &CodexClient, thread_id: &str) -> Result<Option<String>> {
+    let resp = client
+        .send_raw_request(
+            "thread/read",
+            json!({"threadId": thread_id, "includeTurns": true}),
+            None,
+        )
+        .await
+        .context("thread/read")?;
+    let turns = resp
+        .get("thread")
+        .and_then(|t| t.get("turns"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    // Find the most recent turn with status "inProgress". Server returns turns
+    // in append order, so the last in-progress is the active one.
+    Ok(turns
+        .iter()
+        .rev()
+        .find(|turn| {
+            turn.get("status").and_then(|s| s.as_str()) == Some("inProgress")
+        })
+        .and_then(|turn| turn.get("id").and_then(|id| id.as_str().map(str::to_owned))))
 }
 
 async fn cmd_interrupt(name: String) -> Result<()> {
